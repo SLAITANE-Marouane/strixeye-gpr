@@ -66,8 +66,12 @@ def main():
                                    for k, v in metrics.items()})
 
     # Simulate a config change -> results must be invalidated.
+    # (width is capped at the model line length, 10.24 m)
     w = next(w for w in at.number_input if w.label == "Survey width [m]")
-    w.set_value(12.0).run()
+    assert abs(w.max - 10.24) < 1e-6, \
+        f"width cap should be the model line length 10.24, got {w.max}"
+    print("[ok] survey width capped at model line length (10.24 m)")
+    w.set_value(8.0).run()
     assert not at.exception, f"App raised after config change: {at.exception}"
     assert "raw_scans" not in at.session_state, "stale results not invalidated"
     print("[ok] config change invalidates stale results")

@@ -70,6 +70,28 @@ STRINGS_FR = {
     "Trace spacing [m]": "Espacement des traces [m]",
     "Fixed by model input size ({n} traces -> {d:.2f} m line).":
         "Fixé par la taille d'entrée du modèle ({n} traces -> {d:.2f} m par ligne).",
+    "Range 2.0–{m:.2f} m. Capped by the model input: one B-scan covers "
+    "{m:.2f} m ({n} traces × {d} m).":
+        "Plage 2,0–{m:.2f} m. Limité par l'entrée du modèle : un B-scan couvre "
+        "{m:.2f} m ({n} traces × {d} m).",
+    "Range 2–50 m. Number of flight lines ≈ length ÷ line spacing.":
+        "Plage 2–50 m. Nombre de lignes de vol ≈ longueur ÷ espacement des lignes.",
+    "Distance between adjacent flight lines. Smaller spacing = denser "
+    "survey and more B-scans to process.":
+        "Distance entre lignes de vol adjacentes. Un espacement plus petit = "
+        "relevé plus dense et plus de B-scans à traiter.",
+    "Limits: width ≤ {w:.2f} m (model line length) · length ≤ 50 m · "
+    "up to 5 tunnels.":
+        "Limites : largeur ≤ {w:.2f} m (longueur de ligne du modèle) · "
+        "longueur ≤ 50 m · jusqu'à 5 tunnels.",
+    "0–5 tunnels. Each tunnel adds its start/end points, depth, radius "
+    "and soil velocity.":
+        "0–5 tunnels. Chaque tunnel ajoute ses points de début/fin, sa "
+        "profondeur, son rayon et la vitesse du sol.",
+    "Ranges — depth 0.5–4 m · radius 0.1–2 m · soil velocity 0.05–0.20 m/ns. "
+    "Coordinates must lie inside the survey.":
+        "Plages — profondeur 0,5–4 m · rayon 0,1–2 m · vitesse du sol "
+        "0,05–0,20 m/ns. Les coordonnées doivent être à l'intérieur du relevé.",
     "Trajectory pattern": "Motif de trajectoire",
     "lawnmower": "tondeuse",
     "grid": "grille",

@@ -120,6 +120,14 @@ def _time_step(name, fn):
     return out
 
 
+def _clamp(v, lo, hi):
+    return max(lo, min(float(v), hi))
+
+
+#: One B-scan covers exactly this many metres (model input geometry).
+MAX_LINE_M = float(GPR_NX * GPR_DX)
+
+
 # ------------------------------------------------------------------
 # Pipeline steps (each writes its results into session state)
 # ------------------------------------------------------------------
@@ -278,11 +286,26 @@ if st.sidebar.button(_("Set seed")):
 
 # 3. Survey configuration
 st.sidebar.header(_("Survey configuration"))
-survey_width = st.sidebar.number_input(_("Survey width [m]"), 2.0, 50.0, 10.0, 0.5,
-                                       key="survey_w")
-survey_length = st.sidebar.number_input(_("Survey length [m]"), 2.0, 50.0, 10.0, 0.5,
-                                        key="survey_l")
-line_spacing = st.sidebar.selectbox(_("Line spacing [m]"), [0.25, 0.5, 1.0], index=1)
+# Clamp stored values to the current widget bounds (protects sessions
+# created before the width cap was introduced).
+if "survey_w" in st.session_state:
+    st.session_state["survey_w"] = _clamp(st.session_state["survey_w"], 2.0, MAX_LINE_M)
+survey_width = st.sidebar.number_input(
+    _("Survey width [m]"), 2.0, MAX_LINE_M, min(10.0, MAX_LINE_M), 0.5,
+    key="survey_w",
+    help=_("Range 2.0–{m:.2f} m. Capped by the model input: one B-scan covers "
+           "{m:.2f} m ({n} traces × {d} m).").format(m=MAX_LINE_M, n=GPR_NX, d=GPR_DX))
+survey_length = st.sidebar.number_input(
+    _("Survey length [m]"), 2.0, 50.0, 10.0, 0.5,
+    key="survey_l",
+    help=_("Range 2–50 m. Number of flight lines ≈ length ÷ line spacing."))
+line_spacing = st.sidebar.selectbox(
+    _("Line spacing [m]"), [0.25, 0.5, 1.0], index=1,
+    help=_("Distance between adjacent flight lines. Smaller spacing = denser "
+           "survey and more B-scans to process."))
+st.sidebar.caption(
+    _("Limits: width ≤ {w:.2f} m (model line length) · length ≤ 50 m · "
+      "up to 5 tunnels.").format(w=MAX_LINE_M))
 st.sidebar.number_input(
     _("Trace spacing [m]"), value=GPR_DX, disabled=True,
     help=_("Fixed by model input size ({n} traces -> {d:.2f} m line).").format(
@@ -298,12 +321,13 @@ pattern = _patterns[_pattern_labels.index(
 
 # 4. Tunnel editor
 st.sidebar.header(_("Ground-truth tunnels"))
-n_tunnels = st.sidebar.number_input(_("Number of tunnels"), 0, 5, 2, key="n_tunnels")
+n_tunnels = st.sidebar.number_input(_("Number of tunnels"), 0, 5, 2, key="n_tunnels",
+                                    help=_("0–5 tunnels. Each tunnel adds its start/end "
+                                           "points, depth, radius and soil velocity."))
+st.sidebar.caption(
+    _("Ranges — depth 0.5–4 m · radius 0.1–2 m · soil velocity 0.05–0.20 m/ns. "
+      "Coordinates must lie inside the survey."))
 tunnels = []
-
-
-def _clamp(v, lo, hi):
-    return max(lo, min(float(v), hi))
 
 
 # Clamp any previously stored tunnel-widget values to the current survey
