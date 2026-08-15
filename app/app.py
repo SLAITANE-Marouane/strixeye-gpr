@@ -48,6 +48,7 @@ from app.components import (  # noqa: E402
     generate_trajectory, plot_plan_view, plot_heatmap_interactive,
     plot_3d_twin, plot_residuals, plot_bscan, export_report, report_dataframe,
     inject_css, render_header, pipeline_status_bar, metric_cards,
+    build_pdf_report,
     LOGO_PATH,
 )
 
@@ -249,6 +250,12 @@ def run_full_pipeline(trajectory, tunnels, seed, line_spacing,
         status.update(label=_("Pipeline complete ✔"), state="complete")
 
 
+def _gt_visible():
+    """Ground truth is shown unless presentation mode is on and unrevealed."""
+    return (not st.session_state.get("pres_mode", False)) \
+        or st.session_state.get("gt_revealed", False)
+
+
 # ------------------------------------------------------------------
 # Fragment viewers (slider + plot rerun in isolation, no full reload)
 # ------------------------------------------------------------------
@@ -259,9 +266,12 @@ def _bscan_viewer():
     fig, ax = plt.subplots(figsize=(8, 5))
     plot_bscan(ax, scans[idx],
                title=_("Raw B-scan – line {i}").format(i=idx),
-               mask=st.session_state[Keys.GT_MASKS][idx])
+               mask=st.session_state[Keys.GT_MASKS][idx] if _gt_visible() else None)
     st.pyplot(fig)
-    st.caption(_("Ground-truth hyperbola mask overlaid in lime."))
+    if _gt_visible():
+        st.caption(_("Ground-truth hyperbola mask overlaid in lime."))
+    else:
+        st.caption(_("🔒 Ground truth hidden (presentation mode)"))
 
 
 @st.fragment
@@ -292,7 +302,7 @@ def _ai_viewer():
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
     plot_bscan(axes[0], st.session_state[Keys.PREPROCESSED][idx],
                title=_("Preprocessed input"),
-               gt_params=st.session_state[Keys.GT_PARAMS][idx])
+               gt_params=st.session_state[Keys.GT_PARAMS][idx] if _gt_visible() else None)
     prob = st.session_state[Keys.PROBS][idx]
     axes[1].imshow(prob, cmap='hot', aspect='auto', vmin=0, vmax=1,
                    extent=[0, GPR_NX * GPR_DX, GPR_NT * GPR_DT, 0])
@@ -312,7 +322,7 @@ def _loc_viewer():
     plot_bscan(ax, st.session_state[Keys.PREPROCESSED][idx],
                title=_("Localization – line {i}").format(i=idx),
                dets=st.session_state[Keys.LINE_DETS][idx],
-               gt_params=st.session_state[Keys.GT_PARAMS][idx])
+               gt_params=st.session_state[Keys.GT_PARAMS][idx] if _gt_visible() else None)
     st.pyplot(fig)
 
     rows = []
@@ -321,11 +331,12 @@ def _loc_viewer():
             x0_est_m=d['x0_m'], depth_est_m=d['depth_m'],
             v_est_m_ns=d['v'], area_px=d['area']
         ))
-    for g in st.session_state[Keys.GT_PARAMS][idx]:
-        rows.append(dict(
-            x0_true_m=g['x0_m'], depth_true_m=g['depth_m'],
-            v_true_m_ns=g['v'], radius_m=g['r_m']
-        ))
+    if _gt_visible():
+        for g in st.session_state[Keys.GT_PARAMS][idx]:
+            rows.append(dict(
+                x0_true_m=g['x0_m'], depth_true_m=g['depth_m'],
+                v_true_m_ns=g['v'], radius_m=g['r_m']
+            ))
     if rows:
         st.dataframe(pd.DataFrame(rows).round(3))
 
@@ -338,16 +349,19 @@ def _heatmap_viewer():
         st.session_state[Keys.HEAT_EXTENT],
         st.session_state[Keys.XS],
         st.session_state[Keys.YS],
-        st.session_state.get(Keys.GT_PLAN_MASK),
+        st.session_state.get(Keys.GT_PLAN_MASK) if _gt_visible() else None,
         tau
     ), width='stretch')
 
-    _taus, _ious, best_tau, best_iou = compute_threshold_iou(
-        st.session_state[Keys.HEATMAP],
-        st.session_state[Keys.GT_PLAN_MASK]
-    )
-    st.write(_("Best threshold: **{tau:.2f}** → plan-view IoU **{iou:.3f}**").format(
-        tau=best_tau, iou=best_iou))
+    if _gt_visible():
+        _taus, _ious, best_tau, best_iou = compute_threshold_iou(
+            st.session_state[Keys.HEATMAP],
+            st.session_state[Keys.GT_PLAN_MASK]
+        )
+        st.write(_("Best threshold: **{tau:.2f}** → plan-view IoU **{iou:.3f}**").format(
+            tau=best_tau, iou=best_iou))
+    else:
+        st.caption(_("🔒 Ground truth hidden (presentation mode)"))
 
 
 # ------------------------------------------------------------------
@@ -482,6 +496,23 @@ if st.sidebar.button(_("▶ Run full pipeline"), type="primary", width='stretch'
     reset_pipeline()
     st.session_state["pending_run_all"] = True
 
+# 6. Presentation mode
+st.sidebar.header(_("Presentation"))
+pres = st.sidebar.toggle(_("🎬 Presentation mode"), key="pres_mode",
+                         help=_("Hides all ground-truth overlays until you reveal "
+                                "them — perfect for live demos."))
+if pres:
+    if st.session_state.get("gt_revealed", False):
+        st.sidebar.success(_("Ground truth revealed 🎭"))
+        if st.sidebar.button(_("🙈 Hide again"), width='stretch'):
+            st.session_state["gt_revealed"] = False
+            st.rerun()
+    else:
+        st.sidebar.button(_("🎭 Reveal ground truth"), width='stretch',
+                          on_click=lambda: st.session_state.update(gt_revealed=True))
+else:
+    st.session_state.pop("gt_revealed", None)
+
 
 # ------------------------------------------------------------------
 # Configuration change -> invalidate stale results
@@ -530,8 +561,11 @@ tabs = st.tabs(tab_labels)
 # ------------------------------------------------------------------
 with tabs[0]:
     explanation("scene")
-    st.plotly_chart(plot_plan_view(tunnels, trajectory, survey_width, survey_length, pattern),
+    st.plotly_chart(plot_plan_view(tunnels if _gt_visible() else [],
+                                   trajectory, survey_width, survey_length, pattern),
                     width='stretch')
+    if not _gt_visible():
+        st.caption(_("🔒 Ground truth hidden (presentation mode)"))
 
 
 # ------------------------------------------------------------------
@@ -641,26 +675,30 @@ with tabs[6]:
         else:
             col1, col2 = st.columns([3, 2])
             with col1:
-                st.plotly_chart(plot_3d_twin(tunnels, twins, survey_width,
+                st.plotly_chart(plot_3d_twin(tunnels if _gt_visible() else [],
+                                             twins, survey_width,
                                              survey_length, results),
                                 width='stretch')
             with col2:
-                st.subheader(_("Axis errors"))
+                if not _gt_visible():
+                    st.info(_("🔒 Ground truth hidden (presentation mode)"))
+                else:
+                    st.subheader(_("Axis errors"))
 
-                def _r(v):
-                    return round(v, 3) if v is not None else "—"
+                    def _r(v):
+                        return round(v, 3) if v is not None else "—"
 
-                rows = [{
-                    _("Tunnel"): e['tunnel'],
-                    _("Twin"): e['twin'] if e['twin'] else "—",
-                    _("Lateral MAE [m]"): _r(e['lateral_mae']),
-                    _("Depth MAE [m]"): _r(e['depth_mae']),
-                    _("Velocity error [m/ns]"): _r(e['v_err']),
-                    _("Coverage"): (f"{e['coverage'] * 100:.0f}%"
-                                    if e['coverage'] is not None else "—"),
-                } for e in results]
-                if rows:
-                    st.dataframe(pd.DataFrame(rows), hide_index=True)
+                    rows = [{
+                        _("Tunnel"): e['tunnel'],
+                        _("Twin"): e['twin'] if e['twin'] else "—",
+                        _("Lateral MAE [m]"): _r(e['lateral_mae']),
+                        _("Depth MAE [m]"): _r(e['depth_mae']),
+                        _("Velocity error [m/ns]"): _r(e['v_err']),
+                        _("Coverage"): (f"{e['coverage'] * 100:.0f}%"
+                                        if e['coverage'] is not None else "—"),
+                    } for e in results]
+                    if rows:
+                        st.dataframe(pd.DataFrame(rows), hide_index=True)
 
             st.subheader(_("Per-line residuals"))
             st.pyplot(plot_residuals(twins))
@@ -700,7 +738,16 @@ with tabs[7]:
         with st.expander(_("Full metrics (JSON)")):
             st.json(metrics)
 
-        c1, c2, c3 = st.columns(3)
+        pdf_bytes = build_pdf_report(
+            metrics,
+            dict(width=survey_width, length=survey_length,
+                 spacing=line_spacing, pattern=_(pattern),
+                 n_tunnels=len(tunnels), seed=int(seed), device=str(device)),
+            heatmap=st.session_state.get(Keys.HEATMAP),
+            extent=st.session_state.get(Keys.HEAT_EXTENT),
+        )
+
+        c1, c2, c3, c4 = st.columns(4)
         c1.download_button(_("⬇ Download JSON"),
                            json.dumps(metrics, indent=2, default=str),
                            "report.json", "application/json",
@@ -709,7 +756,10 @@ with tabs[7]:
                            report_dataframe(metrics).to_csv(index=False),
                            "report.csv", "text/csv",
                            width='stretch')
-        if c3.button(_("💾 Save to outputs/"), width='stretch'):
+        c3.download_button(_("⬇ Download PDF"), pdf_bytes,
+                           "strixeye_report.pdf", "application/pdf",
+                           width='stretch')
+        if c4.button(_("💾 Save to outputs/"), width='stretch'):
             export_report(metrics, "outputs/report.json")
             report_dataframe(metrics).to_csv("outputs/report.csv", index=False)
             st.success(_("Saved outputs/report.json and outputs/report.csv"))

@@ -65,6 +65,34 @@ def main():
     print("[ok] report metrics:", {k: round(v, 3) if isinstance(v, float) else v
                                    for k, v in metrics.items()})
 
+    # Branded PDF report: must produce valid PDF bytes.
+    from app.components import build_pdf_report
+    pdf = build_pdf_report(
+        at.session_state["report_metrics"],
+        dict(width=10.0, length=10.0, spacing=0.5, pattern="lawnmower",
+             n_tunnels=2, seed=42, device="cpu"),
+        heatmap=at.session_state["heatmap"],
+        extent=at.session_state["heat_extent"],
+    )
+    assert pdf[:5] == b"%PDF-", "PDF report is not a valid PDF"
+    assert len(pdf) > 10_000, "PDF report suspiciously small"
+    print(f"[ok] PDF report builds ({len(pdf) / 1024:.0f} KB)")
+
+    # Presentation mode: toggle on (GT hidden), reveal, toggle off.
+    toggles = list(at.toggle) if hasattr(at, 'toggle') else []
+    pres = next((t for t in toggles if "Presentation mode" in t.label), None)
+    assert pres is not None, "presentation toggle not found"
+    pres.set_value(True).run()
+    assert not at.exception, f"presentation mode raised: {at.exception}"
+    reveal = next(b for b in at.button if "Reveal ground truth" in b.label)
+    reveal.click().run()
+    assert not at.exception, f"GT reveal raised: {at.exception}"
+    assert at.session_state["gt_revealed"] is True
+    pres = next(t for t in at.toggle if "Presentation mode" in t.label)
+    pres.set_value(False).run()
+    assert not at.exception, f"leaving presentation mode raised: {at.exception}"
+    print("[ok] presentation mode: hide -> reveal -> off")
+
     # Simulate a config change -> results must be invalidated.
     # (width is capped at the model line length, 10.24 m)
     w = next(w for w in at.number_input if w.label == "Survey width [m]")
