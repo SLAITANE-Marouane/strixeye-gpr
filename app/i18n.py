@@ -235,6 +235,11 @@ STRINGS_FR = {
     "⬇ Download CSV": "⬇ Télécharger CSV",
     "⬇ Download PDF": "⬇ Télécharger PDF",
 
+    "Run at least one pipeline step first.":
+        "Exécutez d'abord au moins une étape du pipeline.",
+    "No metrics computed yet — run the pipeline first.":
+        "Aucune métrique calculée — exécutez d'abord le pipeline.",
+
     # presentation mode
     "Presentation": "Présentation",
     "🎬 Presentation mode": "🎬 Mode présentation",

@@ -19,6 +19,21 @@ def main():
     print("[ok] app loads without exceptions")
     print("     tabs:", [t.label for t in at.tabs])
 
+    # Report with no pipeline results: must warn, not crash (cloud bug).
+    btn = next(b for b in at.button if "Generate report" in b.label)
+    btn.click().run()
+    assert not at.exception, f"report without pipeline raised: {at.exception}"
+    assert "report_metrics" not in at.session_state, \
+        "empty report should not be stored"
+    # PDF builder must also survive a metrics dict with no known keys.
+    from app.components import build_pdf_report
+    pdf = build_pdf_report(
+        {"device": "cpu"},
+        dict(width=10.0, length=10.0, spacing=0.5, pattern="lawnmower",
+             n_tunnels=0, seed=42, device="cpu"))
+    assert pdf[:5] == b"%PDF-", "empty-metrics PDF is not valid"
+    print("[ok] report button guarded + empty-metrics PDF builds")
+
     # Click "Run full pipeline" in the sidebar.
     btn = next(b for b in at.button if "Run full pipeline" in b.label)
     btn.click().run()

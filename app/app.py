@@ -712,8 +712,12 @@ with tabs[6]:
 with tabs[7]:
     explanation("report")
     if st.button(_("Generate report"), key="run_report", type="primary"):
-        msg = _time_step('report', lambda: step_report(device))
-        st.success(msg)
+        if not any(k in st.session_state
+                   for k in (Keys.HEATMAP, Keys.LINE_DETS, Keys.TWIN_ERRORS)):
+            st.warning(_("Run at least one pipeline step first."))
+        else:
+            msg = _time_step('report', lambda: step_report(device))
+            st.success(msg)
 
     if Keys.REPORT_METRICS in st.session_state:
         metrics = st.session_state[Keys.REPORT_METRICS]

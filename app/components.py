@@ -771,15 +771,20 @@ def build_pdf_report(metrics, config, heatmap=None, extent=None):
 
         ax_tbl = fig.add_axes([0.07, 0.56, 0.5, 0.22])
         ax_tbl.axis('off')
-        tbl = ax_tbl.table(cellText=rows, colLabels=[_("Metric"), _("Value")],
-                           cellLoc='left', loc='center')
-        tbl.auto_set_font_size(False)
-        tbl.set_fontsize(9.5)
-        for (r, c), cell in tbl.get_celld().items():
-            cell.set_edgecolor('#C9D2DA')
-            if r == 0:
-                cell.set_text_props(fontweight='bold', color='white')
-                cell.set_facecolor('#16303A')
+        if rows:
+            tbl = ax_tbl.table(cellText=rows, colLabels=[_("Metric"), _("Value")],
+                               cellLoc='left', loc='center')
+            tbl.auto_set_font_size(False)
+            tbl.set_fontsize(9.5)
+            for (r, c), cell in tbl.get_celld().items():
+                cell.set_edgecolor('#C9D2DA')
+                if r == 0:
+                    cell.set_text_props(fontweight='bold', color='white')
+                    cell.set_facecolor('#16303A')
+        else:
+            ax_tbl.text(0.0, 0.5,
+                        _("No metrics computed yet — run the pipeline first."),
+                        fontsize=10, color='#55606A', va='center')
 
         # --- heat map ------------------------------------------------------
         if heatmap is not None and extent is not None:
