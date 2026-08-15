@@ -250,6 +250,107 @@ def run_full_pipeline(trajectory, tunnels, seed, line_spacing,
 
 
 # ------------------------------------------------------------------
+# Fragment viewers (slider + plot rerun in isolation, no full reload)
+# ------------------------------------------------------------------
+@st.fragment
+def _bscan_viewer():
+    scans = st.session_state[Keys.RAW_SCANS]
+    idx = st.slider(_("Line index"), 0, len(scans) - 1, 0, key="bscan_slider")
+    fig, ax = plt.subplots(figsize=(8, 5))
+    plot_bscan(ax, scans[idx],
+               title=_("Raw B-scan – line {i}").format(i=idx),
+               mask=st.session_state[Keys.GT_MASKS][idx])
+    st.pyplot(fig)
+    st.caption(_("Ground-truth hyperbola mask overlaid in lime."))
+
+
+@st.fragment
+def _preprocess_viewer():
+    n = len(st.session_state[Keys.PREPROCESSED])
+    idx = st.slider(_("Line index"), 0, n - 1, 0, key="pre_slider")
+    # Compute the stage cascade once, for the selected line only.
+    stages = preprocess_stages(st.session_state[Keys.RAW_SCANS][idx])
+    panels = [
+        (stages['raw'], _("raw")),
+        (stages['dewow'], _("1) dewow")),
+        (stages['time_zero'], _("2) time-zero")),
+        (stages['bg_removed'], _("3) bg-removed")),
+        (stages['gained'], _("4) SEC+AGC")),
+        (stages['final'], _("5) normalised")),
+    ]
+    fig, axes = plt.subplots(2, 3, figsize=(14, 7))
+    for ax, (arr, ttl) in zip(axes.flat, panels):
+        plot_bscan(ax, arr, title=ttl)
+    plt.tight_layout()
+    st.pyplot(fig)
+
+
+@st.fragment
+def _ai_viewer():
+    n = len(st.session_state[Keys.PROBS])
+    idx = st.slider(_("Line index"), 0, n - 1, 0, key="ai_slider")
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    plot_bscan(axes[0], st.session_state[Keys.PREPROCESSED][idx],
+               title=_("Preprocessed input"),
+               gt_params=st.session_state[Keys.GT_PARAMS][idx])
+    prob = st.session_state[Keys.PROBS][idx]
+    axes[1].imshow(prob, cmap='hot', aspect='auto', vmin=0, vmax=1,
+                   extent=[0, GPR_NX * GPR_DX, GPR_NT * GPR_DT, 0])
+    axes[1].contour(mask_from_prob(prob), colors='lime', linewidths=1.0,
+                    extent=[0, GPR_NX * GPR_DX, GPR_NT * GPR_DT, 0])
+    axes[1].set_title(_("U-Net probability (≥0.5 contour in lime)"))
+    axes[1].set_xlabel(_("x [m]"))
+    axes[1].set_ylabel(_("two-way time [ns]"))
+    st.pyplot(fig)
+
+
+@st.fragment
+def _loc_viewer():
+    n = len(st.session_state[Keys.LINE_DETS])
+    idx = st.slider(_("Line index"), 0, n - 1, 0, key="loc_slider")
+    fig, ax = plt.subplots(figsize=(8, 5))
+    plot_bscan(ax, st.session_state[Keys.PREPROCESSED][idx],
+               title=_("Localization – line {i}").format(i=idx),
+               dets=st.session_state[Keys.LINE_DETS][idx],
+               gt_params=st.session_state[Keys.GT_PARAMS][idx])
+    st.pyplot(fig)
+
+    rows = []
+    for d in st.session_state[Keys.LINE_DETS][idx]:
+        rows.append(dict(
+            x0_est_m=d['x0_m'], depth_est_m=d['depth_m'],
+            v_est_m_ns=d['v'], area_px=d['area']
+        ))
+    for g in st.session_state[Keys.GT_PARAMS][idx]:
+        rows.append(dict(
+            x0_true_m=g['x0_m'], depth_true_m=g['depth_m'],
+            v_true_m_ns=g['v'], radius_m=g['r_m']
+        ))
+    if rows:
+        st.dataframe(pd.DataFrame(rows).round(3))
+
+
+@st.fragment
+def _heatmap_viewer():
+    tau = st.slider(_("Threshold"), 0.0, 1.0, 0.5, 0.05, key="heat_tau")
+    st.plotly_chart(plot_heatmap_interactive(
+        st.session_state[Keys.HEATMAP],
+        st.session_state[Keys.HEAT_EXTENT],
+        st.session_state[Keys.XS],
+        st.session_state[Keys.YS],
+        st.session_state.get(Keys.GT_PLAN_MASK),
+        tau
+    ), width='stretch')
+
+    _taus, _ious, best_tau, best_iou = compute_threshold_iou(
+        st.session_state[Keys.HEATMAP],
+        st.session_state[Keys.GT_PLAN_MASK]
+    )
+    st.write(_("Best threshold: **{tau:.2f}** → plan-view IoU **{iou:.3f}**").format(
+        tau=best_tau, iou=best_iou))
+
+
+# ------------------------------------------------------------------
 # Sidebar
 # ------------------------------------------------------------------
 if LOGO_PATH.exists():
@@ -444,13 +545,7 @@ with tabs[1]:
         st.success(msg)
 
     if Keys.RAW_SCANS in st.session_state:
-        idx = st.slider(_("Line index"), 0, len(st.session_state[Keys.RAW_SCANS]) - 1, 0)
-        fig, ax = plt.subplots(figsize=(8, 5))
-        plot_bscan(ax, st.session_state[Keys.RAW_SCANS][idx],
-                   title=_("Raw B-scan – line {i}").format(i=idx),
-                   mask=st.session_state[Keys.GT_MASKS][idx])
-        st.pyplot(fig)
-        st.caption(_("Ground-truth hyperbola mask overlaid in lime."))
+        _bscan_viewer()
 
 
 # ------------------------------------------------------------------
@@ -467,23 +562,7 @@ with tabs[2]:
             st.success(msg)
 
     if Keys.PREPROCESSED in st.session_state:
-        idx = st.slider(_("Line index"), 0, len(st.session_state[Keys.PREPROCESSED]) - 1, 0,
-                        key="pre_slider")
-        # Compute the stage cascade once, for the selected line only.
-        stages = preprocess_stages(st.session_state[Keys.RAW_SCANS][idx])
-        panels = [
-            (stages['raw'], _("raw")),
-            (stages['dewow'], _("1) dewow")),
-            (stages['time_zero'], _("2) time-zero")),
-            (stages['bg_removed'], _("3) bg-removed")),
-            (stages['gained'], _("4) SEC+AGC")),
-            (stages['final'], _("5) normalised")),
-        ]
-        fig, axes = plt.subplots(2, 3, figsize=(14, 7))
-        for ax, (arr, ttl) in zip(axes.flat, panels):
-            plot_bscan(ax, arr, title=ttl)
-        plt.tight_layout()
-        st.pyplot(fig)
+        _preprocess_viewer()
 
 
 # ------------------------------------------------------------------
@@ -502,20 +581,7 @@ with tabs[3]:
             st.success(f"{msg} {dt:.2f} s ({dt / n * 1e3:.1f} {_('ms/line')}).")
 
     if Keys.PROBS in st.session_state:
-        idx = st.slider(_("Line index"), 0, len(st.session_state[Keys.PROBS]) - 1, 0,
-                        key="ai_slider")
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
-        plot_bscan(axes[0], st.session_state[Keys.PREPROCESSED][idx],
-                   title=_("Preprocessed input"), gt_params=st.session_state[Keys.GT_PARAMS][idx])
-        prob = st.session_state[Keys.PROBS][idx]
-        axes[1].imshow(prob, cmap='hot', aspect='auto', vmin=0, vmax=1,
-                       extent=[0, GPR_NX * GPR_DX, GPR_NT * GPR_DT, 0])
-        axes[1].contour(mask_from_prob(prob), colors='lime', linewidths=1.0,
-                        extent=[0, GPR_NX * GPR_DX, GPR_NT * GPR_DT, 0])
-        axes[1].set_title(_("U-Net probability (≥0.5 contour in lime)"))
-        axes[1].set_xlabel(_("x [m]"))
-        axes[1].set_ylabel(_("two-way time [ns]"))
-        st.pyplot(fig)
+        _ai_viewer()
 
 
 # ------------------------------------------------------------------
@@ -532,28 +598,7 @@ with tabs[4]:
             st.success(msg)
 
     if Keys.LINE_DETS in st.session_state:
-        idx = st.slider(_("Line index"), 0, len(st.session_state[Keys.LINE_DETS]) - 1, 0,
-                        key="loc_slider")
-        fig, ax = plt.subplots(figsize=(8, 5))
-        plot_bscan(ax, st.session_state[Keys.PREPROCESSED][idx],
-                   title=_("Localization – line {i}").format(i=idx),
-                   dets=st.session_state[Keys.LINE_DETS][idx],
-                   gt_params=st.session_state[Keys.GT_PARAMS][idx])
-        st.pyplot(fig)
-
-        rows = []
-        for d in st.session_state[Keys.LINE_DETS][idx]:
-            rows.append(dict(
-                x0_est_m=d['x0_m'], depth_est_m=d['depth_m'],
-                v_est_m_ns=d['v'], area_px=d['area']
-            ))
-        for g in st.session_state[Keys.GT_PARAMS][idx]:
-            rows.append(dict(
-                x0_true_m=g['x0_m'], depth_true_m=g['depth_m'],
-                v_true_m_ns=g['v'], radius_m=g['r_m']
-            ))
-        if rows:
-            st.dataframe(pd.DataFrame(rows).round(3))
+        _loc_viewer()
 
 
 # ------------------------------------------------------------------
@@ -571,22 +616,7 @@ with tabs[5]:
             st.success(msg)
 
     if Keys.HEATMAP in st.session_state:
-        tau = st.slider(_("Threshold"), 0.0, 1.0, 0.5, 0.05)
-        st.plotly_chart(plot_heatmap_interactive(
-            st.session_state[Keys.HEATMAP],
-            st.session_state[Keys.HEAT_EXTENT],
-            st.session_state[Keys.XS],
-            st.session_state[Keys.YS],
-            st.session_state.get(Keys.GT_PLAN_MASK),
-            tau
-        ), width='stretch')
-
-        taus, ious, best_tau, best_iou = compute_threshold_iou(
-            st.session_state[Keys.HEATMAP],
-            st.session_state[Keys.GT_PLAN_MASK]
-        )
-        st.write(_("Best threshold: **{tau:.2f}** → plan-view IoU **{iou:.3f}**").format(
-            tau=best_tau, iou=best_iou))
+        _heatmap_viewer()
 
 
 # ------------------------------------------------------------------
